@@ -35,7 +35,7 @@
 package BLS12461
 
 import "time"
-import "github.com/sergeikus/core/go/core"
+import "github.com/sergeikus/miracl/core/go/core"
 
 //import "fmt"
 

@@ -35,7 +35,7 @@
 package BLS12461
 
 //import "fmt"
-import "github.com/sergeikus/core/go/core"
+import "github.com/sergeikus/miracl/core/go/core"
 
 const INVALID_PUBLIC_KEY int = -2
 const ERROR int = -3
