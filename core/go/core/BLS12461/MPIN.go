@@ -21,7 +21,7 @@
 
 package BLS12461
 
-import "github.com/miracl/core/go/core"
+import "github.com/sergeikus/miracl/core/go/core"
 
 //import "fmt"
 const MFS int = int(MODBYTES)
