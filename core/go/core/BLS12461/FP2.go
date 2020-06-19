@@ -1,41 +1,28 @@
 /*
-   Copyright (C) 2019 MIRACL UK Ltd.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-     https://www.gnu.org/licenses/agpl-3.0.en.html
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-   You can be released from the requirements of the license by purchasing
-   a commercial license. Buying such a license is mandatory as soon as you
-   develop commercial activities involving the MIRACL Core Crypto SDK
-   without disclosing the source code of your own applications, or shipping
-   the MIRACL Core Crypto SDK with a closed source product.
-*/
+ * Copyright (c) 2012-2020 MIRACL UK Ltd.
+ *
+ * This file is part of MIRACL Core
+ * (see https://github.com/miracl/core).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /* Finite Field arithmetic  Fp^2 functions */
 
 /* FP2 elements are of the form a+ib, where i is sqrt(-1) */
 
 package BLS12461
-
+import "github.com/miracl/core/go/core"
 //import "fmt"
 
 type FP2 struct {
@@ -97,6 +84,11 @@ func NewFP2big(c *BIG) *FP2 {
 	F := new(FP2)
 	F.a = NewFPbig(c)
 	F.b = NewFP()
+	return F
+}
+
+func NewFP2rand(rng *core.RAND) *FP2 {
+	F := NewFP2fps(NewFPrand(rng),NewFPrand(rng))
 	return F
 }
 
@@ -162,8 +154,26 @@ func (F *FP2) one() {
 }
 /* Return sign */
 func (F *FP2) sign() int {
-	m := F.a.redc()
-	return m.parity() 
+	p1 := F.a.sign();
+	p2 := F.b.sign();
+	var u int
+	if BIG_ENDIAN_SIGN {
+		if F.b.iszilch() {
+			u=1;
+		} else {
+			u=0;
+		}
+		p2^=(p1^p2)&u;
+		return p2;
+	} else {
+		if F.a.iszilch() {
+			u=1;
+		} else {
+			u=0;
+		}
+		p1^=(p1^p2)&u;
+		return p1;
+	}
 }
 
 /* negate this mod Modulus */
@@ -332,21 +342,30 @@ func (F *FP2) sqrt() {
 	
 	w2.cmove(w3,w3.qr(nil))
 
-	w2 = w2.sqrt(nil)
-	F.a.copy(w2)
-	w2.add(w2); w2.norm()
-	w2.inverse()
+	w2.invsqrt(w2,F.a)
+	w2.mul(F.a)
+	w2.div2()
+
+//	w2 = w2.sqrt(nil)
+//	F.a.copy(w2)
+//	w2.add(w2); w2.norm()
+//	w2.inverse(nil)
+
 	F.b.mul(w2)
+	sgn:=F.sign()
+	nr:=NewFP2copy(F)
+	nr.neg(); nr.norm()
+	F.cmove(nr,sgn)
 }
 
 /* output to hex string */
 func (F *FP2) ToString() string {
-	return ("[" + F.a.toString() + "," + F.b.toString() + "]")
+	return ("[" + F.a.ToString() + "," + F.b.ToString() + "]")
 }
 
 /* output to hex string */
 func (F *FP2) toString() string {
-	return ("[" + F.a.toString() + "," + F.b.toString() + "]")
+	return ("[" + F.a.ToString() + "," + F.b.ToString() + "]")
 }
 
 /* this=1/this */
@@ -358,7 +377,7 @@ func (F *FP2) inverse() {
 	w1.sqr()
 	w2.sqr()
 	w1.add(w2)
-	w1.inverse()
+	w1.inverse(nil)
 	F.a.mul(w1)
 	w1.neg()
 	w1.norm()

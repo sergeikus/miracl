@@ -1,40 +1,27 @@
 /*
-   Copyright (C) 2019 MIRACL UK Ltd.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-     https://www.gnu.org/licenses/agpl-3.0.en.html
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-   You can be released from the requirements of the license by purchasing
-   a commercial license. Buying such a license is mandatory as soon as you
-   develop commercial activities involving the MIRACL Core Crypto SDK
-   without disclosing the source code of your own applications, or shipping
-   the MIRACL Core Crypto SDK with a closed source product.
-*/
+ * Copyright (c) 2012-2020 MIRACL UK Ltd.
+ *
+ * This file is part of MIRACL Core
+ * (see https://github.com/miracl/core).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /* Finite Field arithmetic */
 /* CLINT mod p functions */
 
 package BLS12461
-
+import "github.com/miracl/core/go/core"
 
 type FP struct {
 	x   *BIG
@@ -77,7 +64,14 @@ func NewFPcopy(a *FP) *FP {
 	return F
 }
 
-func (F *FP) toString() string {
+func NewFPrand(rng *core.RAND) *FP {
+	m := NewBIGints(Modulus)
+	w := Randomnum(m,rng)
+	F := NewFPbig(w)
+	return F
+}
+
+func (F *FP) ToString() string {
 	F.reduce()
 	return F.redc().ToString()
 }
@@ -90,6 +84,8 @@ func (F *FP) nres() {
 		F.x.copy(mod(d))
 		F.XES = 2
 	} else {
+		md := NewBIGints(Modulus)
+		F.x.Mod(md)
 		F.XES = 1
 	}
 }
@@ -251,9 +247,20 @@ func (F *FP) one() {
 
 /* return sign */
 func (F *FP) sign() int {
-	W:=NewFPcopy(F)
-	W.reduce()
-	return W.redc().parity()
+	if BIG_ENDIAN_SIGN {
+		m := NewBIGints(Modulus)
+		m.dec(1)
+		m.fshr(1)
+		n := NewFPcopy(F);
+		n.reduce()
+		w := n.redc()
+		cp:=Comp(w,m)
+		return ((cp+1)&2)>>1		
+	} else {
+		W:=NewFPcopy(F)
+		W.reduce()
+		return W.redc().parity()
+	}
 }
 
 /* normalise this */
@@ -562,7 +569,7 @@ func (F *FP) fpow() *FP {
 }
 
 // calculates r=x^(p-1-2^e)/2^{e+1) where 2^e|p-1
-func (F *FP) invsqrt() {
+func (F *FP) progen() {
 	if (MODTYPE == PSEUDO_MERSENNE || MODTYPE == GENERALISED_MERSENNE) {
 		F.copy(F.fpow())
 		return
@@ -577,7 +584,7 @@ func (F *FP) invsqrt() {
 }
 
 /* this=1/this mod Modulus */
-func (F *FP) inverse() {
+func (F *FP) inverse(h *FP) {
         e:=int(PM1D2)
 		F.norm()
         s:=NewFPcopy(F)
@@ -585,7 +592,11 @@ func (F *FP) inverse() {
             s.sqr()
             s.mul(F)
         }
-        F.invsqrt()
+		if h==nil {
+			F.progen()
+		} else {
+			F.copy(h)
+		}
         for i:=0;i<=e;i++ {
             F.sqr()
 		}
@@ -597,7 +608,7 @@ func (F *FP) inverse() {
 func (F *FP) qr(h *FP) int {
 	r:=NewFPcopy(F)
 	e:=int(PM1D2)
-	r.invsqrt()
+	r.progen()
 	if h!=nil {
 		h.copy(r)
 	}
@@ -608,14 +619,6 @@ func (F *FP) qr(h *FP) int {
             r.sqr()
 	}
 
-//	for i:=0;i<e;i++ { 
-//		r.sqr()
-//	}
-//	s:=NewFPcopy(F)
-//	for i:=0;i<e-1;i++ {
-//		s.sqr()
-//	}
-//	r.mul(s)
 	if r.isunity() {
 		return 1
 	} else {
@@ -628,7 +631,7 @@ func (F *FP) sqrt(h *FP) *FP {
 	e:=int(PM1D2)
 	g:=NewFPcopy(F)
 	if h==nil {
-		g.invsqrt()
+		g.progen()
 	} else {
 		g.copy(h)
 	}
@@ -661,7 +664,31 @@ func (F *FP) sqrt(h *FP) *FP {
 		t.cmove(g,u)
 		b.copy(t)
 	}
+	sgn:=r.sign()
+	nr:=NewFPcopy(r)
+	nr.neg(); nr.norm()
+	r.cmove(nr,sgn)
 	return r
+}
+
+func (F *FP) invsqrt(i *FP,s *FP) int {
+	h:=NewFP()
+	qr:=F.qr(h)
+	s.copy(F.sqrt(h))
+	i.copy(F)
+	i.inverse(h)
+	return qr
+}
+
+func FP_tpo(i *FP,s *FP) int {
+	w:=NewFPcopy(s)
+	t:=NewFPcopy(i)
+	w.mul(i)
+	t.mul(w)
+	qr:=t.invsqrt(i,s)
+	i.mul(w)
+	s.mul(i)
+	return qr
 }
 
 /* return sqrt(this) mod Modulus 

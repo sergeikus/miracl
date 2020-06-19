@@ -1,34 +1,21 @@
 /*
-   Copyright (C) 2019 MIRACL UK Ltd.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-     https://www.gnu.org/licenses/agpl-3.0.en.html
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-   You can be released from the requirements of the license by purchasing
-   a commercial license. Buying such a license is mandatory as soon as you
-   develop commercial activities involving the MIRACL Core Crypto SDK
-   without disclosing the source code of your own applications, or shipping
-   the MIRACL Core Crypto SDK with a closed source product.
-*/
+ * Copyright (c) 2012-2020 MIRACL UK Ltd.
+ *
+ * This file is part of MIRACL Core
+ * (see https://github.com/miracl/core).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /* MiotCL Weierstrass elliptic curve functions over FP2 */
 
@@ -564,7 +551,6 @@ func (E *ECP2) mul(e *BIG) *ECP2 {
 		P.Add(Q)
 	}
 	P.Sub(C)
-	P.Affine()
 	return P
 }
 
@@ -632,7 +618,6 @@ func (E *ECP2) Cfp() {
 		E.Add(x2Q)
 		E.Add(xQ)
 	}
-	E.Affine()
 }
 
 
@@ -725,67 +710,94 @@ func mul4(Q []*ECP2, u []*BIG) *ECP2 {
 	W.Sub(Q[0])
 	P.cmove(W, pb)
 
-	P.Affine()
 	return P
 }
 
-/* Deterministic mapping of Fp to point on curve */
- func ECP2_hashit(h *BIG) *ECP2 {
-    // SWU method
-    W:=NewFP2int(1)
-	B := NewFP2big(NewBIGints(CURVE_B))
-    t:=NewFPbig(h)
-    s:=NewFPint(-3)
-    one:=NewFPint(1)
-	if SEXTIC_TWIST == D_TYPE {
-		B.div_ip()
+/* Hunt and Peck a BIG to a curve point */
+func ECP2_hap2point(h *BIG) *ECP2 {
+	x := NewBIGcopy(h)
+	one := NewBIGint(1)
+	var X *FP2
+	var Q *ECP2
+	for true {
+		X = NewFP2bigs(one, x)
+		Q = NewECP2fp2(X,0)
+		if !Q.Is_infinity() {
+			break
+		}
+		x.inc(1)
+		x.norm()
 	}
-	if SEXTIC_TWIST == M_TYPE {
-		B.mul_ip()
-	}
-    B.norm()
-    sgn:=t.sign()
-    w:=s.sqrt(nil)
-    j:=NewFPcopy(w); j.sub(one); j.norm(); j.div2()
+	return Q
+}
 
-    w.mul(t)
-    b:=NewFPcopy(t)
-    b.sqr()
-    b.add(one)
-    Y:=NewFP2fp(b)
-    B.add(Y); B.norm(); B.inverse()
-    B.pmul(w)
+/* Constant time Map to Point */
+ func ECP2_map2point(H *FP2) *ECP2 {
+    // Shallue and van de Woestijne
+    NY:=NewFP2int(1)
+    T:=NewFP2copy(H) /**/
+	sgn:=T.sign() /**/
 
-    X1:=NewFP2copy(B); X1.pmul(t)
-    Y.copy(NewFP2fp(j))
-    X2:=NewFP2copy(X1); X2.sub(Y); X2.norm()
-    X1.copy(X2); X1.neg(); X1.norm()
-    X2.sub(W); X2.norm()
+	Z:=NewFPint(RIADZG2);
+	X1:=NewFP2fp(Z)
+	X3:=NewFP2copy(X1)
+	A:=RHS2(X1)
+	W:=NewFP2copy(A)
+    if (RIADZG2==-1 && SEXTIC_TWIST==M_TYPE && CURVE_B_I==4) { // special case for BLS12381
+        W.copy(NewFP2ints(2,1))
+    } else {
+        W.sqrt()
+    }
+	s:=NewFPbig(NewBIGints(SQRTm3))
+	Z.mul(s)
 
-    B.sqr(); B.inverse()
-    X3:=NewFP2copy(B); X3.add(W); X3.norm()
+	T.sqr()
+	Y:=NewFP2copy(A); Y.mul(T)
+	T.copy(NY); T.add(Y); T.norm()
+	Y.rsub(NY); Y.norm()
+	NY.copy(T); NY.mul(Y); 
+	
+	NY.pmul(Z)
+	NY.inverse()
+
+    W.pmul(Z)
+    if (W.sign()==1) {
+        W.neg()
+        W.norm()
+    }
+    W.pmul(Z)
+	W.mul(H); W.mul(Y); W.mul(NY)
+
+	X1.neg(); X1.norm(); X1.div2()
+	X2:=NewFP2copy(X1)
+	X1.sub(W); X1.norm()
+	X2.add(W); X2.norm()
+	A.add(A); A.add(A); A.norm()
+	T.sqr(); T.mul(NY); T.sqr()
+	A.mul(T)
+	X3.add(A); X3.norm()
 
     Y.copy(RHS2(X2))
-    X1.cmove(X2,Y.qr())
-    Y.copy(RHS2(X3))
-    X1.cmove(X3,Y.qr())
+    X3.cmove(X2,Y.qr())
     Y.copy(RHS2(X1))
+    X3.cmove(X1,Y.qr())
+    Y.copy(RHS2(X3))
     Y.sqrt()
 
     ne:=Y.sign()^sgn
     W.copy(Y); W.neg(); W.norm()
     Y.cmove(W,ne)
 
-    return NewECP2fp2s(X1,Y);
+    return NewECP2fp2s(X3,Y);
 }
 
 /* Map octet string to curve point */
 func ECP2_mapit(h []byte) *ECP2 {
 	q := NewBIGints(Modulus)
 	dx:=DBIG_fromBytes(h);
-    x:=dx.mod(q);
-		
-	Q:=ECP2_hashit(x)
+    x:=dx.Mod(q);
+
+	Q:=ECP2_hap2point(x)
 	Q.Cfp()
     return Q
 }

@@ -1,37 +1,24 @@
 /*
-   Copyright (C) 2019 MIRACL UK Ltd.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-     https://www.gnu.org/licenses/agpl-3.0.en.html
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-   You can be released from the requirements of the license by purchasing
-   a commercial license. Buying such a license is mandatory as soon as you
-   develop commercial activities involving the MIRACL Core Crypto SDK
-   without disclosing the source code of your own applications, or shipping
-   the MIRACL Core Crypto SDK with a closed source product.
-*/
+ * Copyright (c) 2012-2020 MIRACL UK Ltd.
+ *
+ * This file is part of MIRACL Core
+ * (see https://github.com/miracl/core).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package BLS12461
-
+//import "fmt"
 /* Elliptic Curve Point Structure */
 
 type ECP struct {
@@ -89,6 +76,7 @@ func NewECPbigint(ix *BIG, s int) *ECP {
 		ny := rhs.sqrt(hint)
 		if ny.redc().parity() != s {
 			ny.neg()
+			ny.norm()
 		}
 		E.y.copy(ny)
 	} else {
@@ -271,7 +259,7 @@ func RHS(x *FP) *FP {
 		}
 		r.sub(one)
 		r.norm()
-		b.inverse()
+		b.inverse(nil)
 		r.mul(b)
 	}
 	if CURVETYPE == MONTGOMERY { // x^3+Ax^2+x
@@ -295,7 +283,7 @@ func (E *ECP) Affine() {
 	if E.z.Equals(one) {
 		return
 	}
-	E.z.inverse()
+	E.z.inverse(nil)
 	E.x.mul(E.z)
 	E.x.reduce()
 
@@ -414,6 +402,7 @@ func ECP_fromBytes(b []byte) *ECP {
 		if Comp(py, p) >= 0 {
 			return NewECP()
 		}
+
 		return NewECPbigs(px, py)
 	}
 
@@ -966,7 +955,6 @@ func (E *ECP) pinmul(e int32, bts int32) *ECP {
 			R0.cswap(R1, b)
 		}
 		P.Copy(R0)
-		P.Affine()
 		return P
 	}
 }
@@ -987,7 +975,6 @@ func (E *ECP) mul(e *BIG) *ECP {
 		R1.Copy(E)
 		R1.dbl()
 		D.Copy(E)
-		D.Affine()
 		nb := e.nbits()
 		for i := nb - 2; i >= 0; i-- {
 			b := int(e.bit(i))
@@ -1056,7 +1043,6 @@ func (E *ECP) mul(e *BIG) *ECP {
 		}
 		P.Sub(C) /* apply correction */
 	}
-	P.Affine()
 	return P
 }
 
@@ -1156,7 +1142,6 @@ func (E *ECP) Mul2(e *BIG, Q *ECP, f *BIG) *ECP {
 		S.Add(T)
 	}
 	S.Sub(C) /* apply correction */
-	S.Affine()
 	return S
 }
 
@@ -1180,20 +1165,42 @@ func (E *ECP) Cfp() {
 	E.Copy(E.mul(c))
 }
 
-func ECP_hashit(h *BIG) *ECP {
+/* Hunt and Peck a BIG to a curve point */
+func ECP_hap2point(h *BIG) *ECP {
+	var P *ECP
+	x := NewBIGcopy(h)
+
+
+	for true {
+		if CURVETYPE != MONTGOMERY {
+			P = NewECPbigint(x, 0)
+		} else {
+			P = NewECPbig(x)
+		}
+		x.inc(1)
+		x.norm()
+		if !P.Is_infinity() {
+			break
+		}
+	}
+	return P
+}
+
+/* Constant time Map to Point */
+func ECP_map2point(h *FP) *ECP {
 	P := NewECP()
 
 	if CURVETYPE == MONTGOMERY {
 // Elligator 2
 			one:=NewFPint(1)
 			A:=NewFPint(CURVE_A)
-			t:=NewFPbig(h)
+			t:=NewFPcopy(h)
 
             t.sqr();
 
             if PM1D2 == 2 {
                 t.add(t)
-            } 
+            }
             if PM1D2 == 1 {
                 t.neg();
             }
@@ -1203,7 +1210,7 @@ func ECP_hashit(h *BIG) *ECP {
 
             t.add(one)
             t.norm()
-            t.inverse()
+            t.inverse(nil)
 			X1:=NewFPcopy(t); X1.mul(A)
             X1.neg();
 			X2:=NewFPcopy(X1)
@@ -1214,34 +1221,56 @@ func ECP_hashit(h *BIG) *ECP {
 
             a:=X1.redc()
             P.Copy(NewECPbig(a))
-	} 
+	}
 	if CURVETYPE == EDWARDS {
 // Elligator 2 - map to Montgomery, place point, map back
-            t:=NewFPbig(h)
+            t:=NewFPcopy(h)
             one:=NewFPint(1)
             B:=NewFPbig(NewBIGints(CURVE_B))
-            A:=NewFPcopy(B)
-            sgn:=t.sign()
-            if (CURVE_A==1) {
-                A.add(one)
-                B.sub(one)
-            } else {
-                A.sub(one)
-                B.add(one)
-            }
-            A.norm(); B.norm()
-            KB:=NewFPcopy(B);
+			var A *FP
+            K:=NewFP()
+			rfc:=0
+			w1:=NewFP();
+            //sgn:=t.sign()
 
-            A.div2()
-            B.div2()
-            B.div2()
-            B.sqr()
-            
+			if MODTYPE !=  GENERALISED_MERSENNE {
+				A=NewFPcopy(B)
+
+				if (CURVE_A==1) {
+					A.add(one)
+					B.sub(one)
+				} else {
+					A.sub(one)
+					B.add(one)
+				}
+				A.norm(); B.norm()
+
+				A.div2()
+				B.div2()
+				B.div2()
+
+				K.copy(B);
+				K.neg()
+				//K.inverse(nil)
+				K.invsqrt(K,w1);
+
+				rfc=RIADZ
+				if rfc==1 { // RFC7748
+					A.mul(K)
+					K.mul(w1);
+					//K=K.sqrt(nil)
+				} else {
+				 B.sqr()
+				}
+			} else {
+				rfc=1
+				A=NewFPint(156326)
+			}
+
             t.sqr()
-
             if PM1D2 == 2 {
                 t.add(t)
-            } 
+            }
             if PM1D2 == 1 {
                 t.neg();
             }
@@ -1250,7 +1279,7 @@ func ECP_hashit(h *BIG) *ECP {
             }
 
             t.add(one); t.norm()
-            t.inverse()
+            t.inverse(nil)
 			X1:=NewFPcopy(t); X1.mul(A)
             X1.neg()
 
@@ -1259,17 +1288,25 @@ func ECP_hashit(h *BIG) *ECP {
             X2.neg()
 
             X1.norm()
-            t.copy(X1); t.sqr(); w1:=NewFPcopy(t); w1.mul(X1)
+            t.copy(X1); t.sqr(); w1.copy(t); w1.mul(X1)
             t.mul(A); w1.add(t)
-            t.copy(X1); t.mul(B)
-            w1.add(t)
+            if rfc==0 {
+                t.copy(X1); t.mul(B)
+                w1.add(t)
+            } else {
+                w1.add(X1)
+            }
             w1.norm()
 
             X2.norm()
             t.copy(X2); t.sqr(); w2:=NewFPcopy(t); w2.mul(X2)
             t.mul(A); w2.add(t)
-            t.copy(X2); t.mul(B)
-            w2.add(t)
+            if rfc==0 {
+                t.copy(X2); t.mul(B)
+                w2.add(t)
+            } else {
+                w2.add(X2)
+            }
             w2.norm()
 
             qres:=w2.qr(nil)
@@ -1277,48 +1314,72 @@ func ECP_hashit(h *BIG) *ECP {
             w1.cmove(w2,qres)
 
             Y:=w1.sqrt(nil)
-            t.copy(X1); t.add(t); t.add(t); t.norm()
-
-            w1.copy(t); w1.sub(KB); w1.norm()
-            w2.copy(t); w2.add(KB); w2.norm()
-            t.copy(w1); t.mul(Y)
-            t.inverse()
-
-            X1.mul(t)
-            X1.mul(w1)
-            Y.mul(t)
-            Y.mul(w2)
-
-            x:=X1.redc()
-
-            ne:=Y.sign()^sgn
             NY:=NewFPcopy(Y); NY.neg(); NY.norm()
-            Y.cmove(NY,ne)
+            Y.cmove(NY,1-qres)
 
+			if rfc==0 {
+				X1.mul(K);
+				Y.mul(K);
+			}
+//            ne:=Y.sign()^sgn
+//            NY:=NewFPcopy(Y); NY.neg(); NY.norm()
+//            Y.cmove(NY,ne)
+			if MODTYPE ==  GENERALISED_MERSENNE {
+                t.copy(X1); t.sqr()
+                NY.copy(t); NY.add(one); NY.norm()
+                t.sub(one); t.norm()
+                w1.copy(t); w1.mul(Y)
+                w1.add(w1); w1.add(w1); w1.norm()
+                t.sqr()
+                Y.sqr(); Y.add(Y); Y.add(Y); Y.norm()
+                w2.copy(t); w2.add(Y); w2.norm()
+                w2.inverse(nil)
+                w1.mul(w2)
+
+                w2.copy(Y); w2.sub(t); w2.norm()
+                w2.mul(X1)
+                t.mul(X1)
+                X1.copy(w1)
+                Y.div2()
+                w1.copy(Y); w1.mul(NY)
+                w1.rsub(t); w1.norm()
+                w1.inverse(nil)
+                Y.copy(w2); Y.mul(w1)
+			} else {
+				w1.copy(X1); w1.add(one); w1.norm()
+				w2.copy(X1); w2.sub(one); w2.norm()
+				t.copy(w1); t.mul(Y)
+				t.inverse(nil)
+				X1.mul(w1)
+				X1.mul(t)
+				if rfc==1 {
+					X1.mul(K)
+				}
+				Y.mul(w2)
+				Y.mul(t)
+			}
+            x:=X1.redc()
             y:=Y.redc()
             P.Copy(NewECPbigs(x,y))
 	}
 	if CURVETYPE == WEIERSTRASS {
 	// swu method
-            one:=NewFPint(1);
-            B:=NewFPbig(NewBIGints(CURVE_B))
-            t:=NewFPbig(h)
-            x:=NewBIG();
-			Y:=NewFP();
-            sgn:=t.sign();
+            one:=NewFPint(1)
+            t:=NewFPcopy(h)
+            x:=NewBIG()
+			Y:=NewFP()
+			NY:=NewFP()
+            sgn:=t.sign()
             if CURVE_A!=0 {
                 A:=NewFPint(CURVE_A)
+				B:=NewFPbig(NewBIGints(CURVE_B))
+
 				t.sqr();
-				if (PM1D2 == 2) {
-					t.add(t)
-				} else {
-					t.neg()
-				}
-                t.norm()
+				t.imul(RIADZ)
                 w:=NewFPcopy(t); w.add(one); w.norm()
                 w.mul(t)
                 A.mul(w)
-                A.inverse()
+                A.inverse(nil)
                 w.add(one); w.norm()
                 w.mul(B)
                 w.neg(); w.norm()
@@ -1330,33 +1391,59 @@ func ECP_hashit(h *BIG) *ECP {
                 Y.copy(rhs.sqrt(nil))
                 x.copy(X2.redc())
             } else {
-                A:=NewFPint(-3)
-                w:=A.sqrt(nil)
-                j:=NewFPcopy(w); j.sub(one); j.norm(); j.div2()
-                w.mul(t)
-                B.add(one)
-                Y.copy(t); Y.sqr()
-                B.add(Y); B.norm(); B.inverse()
+// Shallue and van de Woestijne
+// SQRTm3 not available, so preprocess this out
+/* */
+                Z:=RIADZ
+                X1:=NewFPint(Z)
+                X3:=NewFPcopy(X1)
+                A:=RHS(X1)
+				B:=NewFPbig(NewBIGints(SQRTm3))
+				B.imul(Z)
+
+                t.sqr()
+                Y.copy(A); Y.mul(t)
+                t.copy(one); t.add(Y); t.norm()
+                Y.rsub(one); Y.norm()
+                NY.copy(t); NY.mul(Y); 
+				NY.mul(B)
+				
+                w:=NewFPcopy(A);
+				FP_tpo(NY,w)
+
                 w.mul(B)
-                t.mul(w)
-                X1:=NewFPcopy(j); X1.sub(t); X1.norm()
-                X2:=NewFPcopy(X1); X2.neg(); X2.sub(one); X2.norm()
-                w.sqr(); w.inverse()
-                X3:=NewFPcopy(w); X3.add(one); X3.norm()
+                if (w.sign()==1) {
+                    w.neg()
+                    w.norm()
+                }
+
+                w.mul(B)				
+                w.mul(h); w.mul(Y); w.mul(NY)
+
+                X1.neg(); X1.norm(); X1.div2()
+                X2:=NewFPcopy(X1)
+                X1.sub(w); X1.norm()
+                X2.add(w); X2.norm()
+                A.add(A); A.add(A); A.norm()
+                t.sqr(); t.mul(NY); t.sqr()
+                A.mul(t)
+                X3.add(A); X3.norm()
+
                 rhs:=RHS(X2)
-                X1.cmove(X2,rhs.qr(nil))
-                rhs.copy(RHS(X3))
-                X1.cmove(X3,rhs.qr(nil))
+                X3.cmove(X2,rhs.qr(nil))
                 rhs.copy(RHS(X1))
+                X3.cmove(X1,rhs.qr(nil))
+                rhs.copy(RHS(X3))
                 Y.copy(rhs.sqrt(nil))
-                x.copy(X1.redc())
+                x.copy(X3.redc())
+/* */
             }
             ne:=Y.sign()^sgn
-            NY:=NewFPcopy(Y); NY.neg(); NY.norm()
+            NY.copy(Y); NY.neg(); NY.norm()
             Y.cmove(NY,ne)
 
             y:=Y.redc()
-            P.Copy(NewECPbigs(x,y))            
+            P.Copy(NewECPbigs(x,y))
 	}
 	return P
 }
@@ -1364,8 +1451,9 @@ func ECP_hashit(h *BIG) *ECP {
 func ECP_mapit(h []byte) *ECP {
 	q := NewBIGints(Modulus)
 	dx:= DBIG_fromBytes(h[:])
-	x:= dx.mod(q)
-	P:= ECP_hashit(x)
+	x:= dx.Mod(q)
+
+	P:= ECP_hap2point(x)
 	P.Cfp()
 	return P
 }
