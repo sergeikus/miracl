@@ -27,7 +27,9 @@ const MONTGOMERY int = 2
 // Pairing Friendly?
 const NOT int = 0
 const BN int = 1
-const BLS int = 2
+const BLS12 int = 2
+const BLS24 int = 3
+const BLS48 int = 4
 
 // Pairing Twist type
 const D_TYPE int = 0
@@ -49,7 +51,7 @@ const NEGATIVEX int = 1
 
 const CURVETYPE int = WEIERSTRASS
 const CURVE_A int = 0
-const CURVE_PAIRING_TYPE int = BLS
+const CURVE_PAIRING_TYPE int = BLS12
 
 // Pairings only
 
@@ -57,6 +59,8 @@ const SEXTIC_TWIST int = M_TYPE
 const SIGN_OF_X int = NEGATIVEX
 const ATE_BITS int = 78
 const G2_TABLE int = 79
+const HTC_ISO int = 0
+const HTC_ISO_G2 int = 0
 
 // associated hash function and AES key size
 

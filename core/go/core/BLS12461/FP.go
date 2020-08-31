@@ -21,7 +21,7 @@
 /* CLINT mod p functions */
 
 package BLS12461
-import "github.com/sergeikus/miracl/core/go/core"
+import "github.com/miracl/core/go/core"
 
 type FP struct {
 	x   *BIG

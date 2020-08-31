@@ -17,11 +17,11 @@
  * limitations under the License.
  */
 
-/* MPIN API Functions */
+/* MPIN 128-bit API Functions */
 
 package BLS12461
 
-import "github.com/sergeikus/miracl/core/go/core"
+import "github.com/miracl/core/go/core"
 
 //import "fmt"
 const MFS int = int(MODBYTES)

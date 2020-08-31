@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-/* Boneh-Lynn-Shacham  API Functions */
+/* Boneh-Lynn-Shacham signature 128-bit API Functions */
 
 /* Loosely (for now) following https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-02 */
 
@@ -25,7 +25,7 @@
 
 package BLS12461
 
-import "github.com/sergeikus/miracl/core/go/core"
+import "github.com/miracl/core/go/core"
 
 //import "fmt"
 

@@ -974,7 +974,7 @@ func (E *ECP) mul(e *BIG) *ECP {
 		R1 := NewECP()
 		R1.Copy(E)
 		R1.dbl()
-		D.Copy(E)
+		D.Copy(E); D.Affine()
 		nb := e.nbits()
 		for i := nb - 2; i >= 0; i-- {
 			b := int(e.bit(i))
@@ -1192,9 +1192,15 @@ func ECP_map2point(h *FP) *ECP {
 
 	if CURVETYPE == MONTGOMERY {
 // Elligator 2
+			X1:=NewFP()
+			X2:=NewFP()
+			w:=NewFP()
 			one:=NewFPint(1)
 			A:=NewFPint(CURVE_A)
 			t:=NewFPcopy(h)
+			N:=NewFP()
+			D:=NewFP()
+			hint:=NewFP()
 
             t.sqr();
 
@@ -1208,33 +1214,51 @@ func ECP_map2point(h *FP) *ECP {
                 t.imul(QNRI);
             }
 
-            t.add(one)
             t.norm()
-            t.inverse(nil)
-			X1:=NewFPcopy(t); X1.mul(A)
-            X1.neg();
-			X2:=NewFPcopy(X1)
-            X2.add(A); X2.norm()
-            X2.neg()
-            rhs:=RHS(X2)
-            X1.cmove(X2,rhs.qr(nil))
+            D.copy(t); D.add(one); D.norm()
+
+            X1.copy(A)
+            X1.neg(); X1.norm()
+            X2.copy(X1)
+            X2.mul(t)
+
+            w.copy(X1); w.sqr(); N.copy(w); N.mul(X1)
+            w.mul(A); w.mul(D); N.add(w)
+            t.copy(D); t.sqr()
+            t.mul(X1)
+            N.add(t); N.norm()
+
+            t.copy(N); t.mul(D)
+            qres:=t.qr(hint)
+            w.copy(t); w.inverse(hint)
+            D.copy(w); D.mul(N)
+            X1.mul(D)
+            X2.mul(D)
+            X1.cmove(X2,1-qres)
 
             a:=X1.redc()
             P.Copy(NewECPbig(a))
 	}
 	if CURVETYPE == EDWARDS {
 // Elligator 2 - map to Montgomery, place point, map back
-            t:=NewFPcopy(h)
+			X1:=NewFP()
+			X2:=NewFP()
+			t:=NewFPcopy(h)
+			w:=NewFP()
             one:=NewFPint(1)
+			A:=NewFP()
+			w1:=NewFP()
+			w2:=NewFP()
             B:=NewFPbig(NewBIGints(CURVE_B))
-			var A *FP
+			Y:=NewFP()
             K:=NewFP()
+			D:=NewFP()
+			hint:=NewFP()
+			Y3:=NewFP()
 			rfc:=0
-			w1:=NewFP();
-            //sgn:=t.sign()
 
 			if MODTYPE !=  GENERALISED_MERSENNE {
-				A=NewFPcopy(B)
+				A.copy(B)
 
 				if (CURVE_A==1) {
 					A.add(one)
@@ -1249,8 +1273,8 @@ func ECP_map2point(h *FP) *ECP {
 				B.div2()
 				B.div2()
 
-				K.copy(B);
-				K.neg()
+				K.copy(B)
+				K.neg(); K.norm()
 				//K.inverse(nil)
 				K.invsqrt(K,w1);
 
@@ -1260,156 +1284,269 @@ func ECP_map2point(h *FP) *ECP {
 					K.mul(w1);
 					//K=K.sqrt(nil)
 				} else {
-				 B.sqr()
+					B.sqr()
 				}
 			} else {
 				rfc=1
-				A=NewFPint(156326)
+				A.copy(NewFPint(156326))
 			}
 
             t.sqr()
+			qnr:=0
             if PM1D2 == 2 {
                 t.add(t)
+				qnr=2
             }
             if PM1D2 == 1 {
                 t.neg();
+				qnr=-1
             }
             if PM1D2 > 2 {
                 t.imul(QNRI);
+				qnr=QNRI
             }
+			t.norm()
 
-            t.add(one); t.norm()
-            t.inverse(nil)
-			X1:=NewFPcopy(t); X1.mul(A)
-            X1.neg()
+            D.copy(t); D.add(one); D.norm()
+            X1.copy(A)
+            X1.neg(); X1.norm()
+            X2.copy(X1); X2.mul(t)
 
-			X2:=NewFPcopy(X1);
-            X2.add(A); X2.norm()
-            X2.neg()
+// Figure out RHS of Montgomery curve in rational form gx1/d^3
 
-            X1.norm()
-            t.copy(X1); t.sqr(); w1.copy(t); w1.mul(X1)
-            t.mul(A); w1.add(t)
+            w.copy(X1); w.sqr(); w1.copy(w); w1.mul(X1)
+            w.mul(A); w.mul(D); w1.add(w)
+            w2.copy(D); w2.sqr()
+
             if rfc==0 {
-                t.copy(X1); t.mul(B)
-                w1.add(t)
+                w.copy(X1); w.mul(B)
+                w2.mul(w)
+                w1.add(w2)
             } else {
-                w1.add(X1)
+                w2.mul(X1)
+                w1.add(w2)
             }
             w1.norm()
 
-            X2.norm()
-            t.copy(X2); t.sqr(); w2:=NewFPcopy(t); w2.mul(X2)
-            t.mul(A); w2.add(t)
+            B.copy(w1); B.mul(D)
+            qres:=B.qr(hint)
+            w.copy(B); w.inverse(hint)
+            D.copy(w); D.mul(w1)
+            X1.mul(D)
+            X2.mul(D)
+            D.sqr()
+
+            Y.copy(B.sqrt(hint))
+            Y.mul(D)
+
+			B.imul(qnr)
+			w.copy(NewFPbig(NewBIGints(CURVE_HTPC)))
+			hint.mul(w)
+
+            Y3.copy(B.sqrt(hint))
+            D.mul(h)
+            Y3.mul(D)
+
+            X1.cmove(X2,1-qres)
+            Y.cmove(Y3,1-qres)
+
+            w.copy(Y); w.neg(); w.norm()
+            Y.cmove(w,qres^Y.sign())
+
             if rfc==0 {
-                t.copy(X2); t.mul(B)
-                w2.add(t)
-            } else {
-                w2.add(X2)
+                X1.mul(K)
+                Y.mul(K)
             }
-            w2.norm()
 
-            qres:=w2.qr(nil)
-            X1.cmove(X2,qres)
-            w1.cmove(w2,qres)
-
-            Y:=w1.sqrt(nil)
-            NY:=NewFPcopy(Y); NY.neg(); NY.norm()
-            Y.cmove(NY,1-qres)
-
-			if rfc==0 {
-				X1.mul(K);
-				Y.mul(K);
-			}
-//            ne:=Y.sign()^sgn
-//            NY:=NewFPcopy(Y); NY.neg(); NY.norm()
-//            Y.cmove(NY,ne)
 			if MODTYPE ==  GENERALISED_MERSENNE {
-                t.copy(X1); t.sqr()
-                NY.copy(t); NY.add(one); NY.norm()
-                t.sub(one); t.norm()
-                w1.copy(t); w1.mul(Y)
-                w1.add(w1); w1.add(w1); w1.norm()
-                t.sqr()
-                Y.sqr(); Y.add(Y); Y.add(Y); Y.norm()
-                w2.copy(t); w2.add(Y); w2.norm()
-                w2.inverse(nil)
-                w1.mul(w2)
+				t.copy(X1); t.sqr()
+				w.copy(t); w.add(one); w.norm()
+				t.sub(one); t.norm()
+				w1.copy(t); w1.mul(Y)
+				w1.add(w1); X2.copy(w1); X2.add(w1); X2.norm()
+				t.sqr()
+				Y.sqr(); Y.add(Y); Y.add(Y); Y.norm()
+				B.copy(t); B.add(Y); B.norm()
 
-                w2.copy(Y); w2.sub(t); w2.norm()
-                w2.mul(X1)
-                t.mul(X1)
-                X1.copy(w1)
-                Y.div2()
-                w1.copy(Y); w1.mul(NY)
-                w1.rsub(t); w1.norm()
-                w1.inverse(nil)
-                Y.copy(w2); Y.mul(w1)
+				w2.copy(Y); w2.sub(t); w2.norm()
+				w2.mul(X1)
+				t.mul(X1)
+				Y.div2()
+				w1.copy(Y); w1.mul(w)
+				w1.rsub(t); w1.norm()
+ 
+				t.copy(X2); t.mul(w1)
+				P.x.copy(t)
+				t.copy(w2); t.mul(B)
+				P.y.copy(t)
+				t.copy(w1); t.mul(B)
+				P.z.copy(t)
+
+				return P;
 			} else {
 				w1.copy(X1); w1.add(one); w1.norm()
 				w2.copy(X1); w2.sub(one); w2.norm()
 				t.copy(w1); t.mul(Y)
-				t.inverse(nil)
 				X1.mul(w1)
-				X1.mul(t)
+	
 				if rfc==1 {
 					X1.mul(K)
 				}
 				Y.mul(w2)
-				Y.mul(t)
+                P.x.copy(X1)
+                P.y.copy(Y)
+                P.z.copy(t)
+
+                return P				
 			}
-            x:=X1.redc()
-            y:=Y.redc()
-            P.Copy(NewECPbigs(x,y))
 	}
 	if CURVETYPE == WEIERSTRASS {
 	// swu method
+			A:=NewFP()
+			B:=NewFP()
+			X1:=NewFP()
+			X2:=NewFP()
+			X3:=NewFP()
             one:=NewFPint(1)
-            t:=NewFPcopy(h)
-            x:=NewBIG()
 			Y:=NewFP()
-			NY:=NewFP()
+			D:=NewFP()
+            t:=NewFPcopy(h)
+			w:=NewFP()
+			D2:=NewFP()
+			hint:=NewFP()
+			GX1:=NewFP()
+			Y3:=NewFP()
             sgn:=t.sign()
-            if CURVE_A!=0 {
-                A:=NewFPint(CURVE_A)
-				B:=NewFPbig(NewBIGints(CURVE_B))
 
+            if CURVE_A != 0 || HTC_ISO != 0{
+				if HTC_ISO!=0 {
+/* CAHCZS
+					A.copy(NewFPbig(NewBIGints(CURVE_Ad)))
+					B.copy(NewFPbig(NewBIGints(CURVE_Bd)))
+CAHCZF */
+				} else {
+					A.copy(NewFPint(CURVE_A))
+					B.copy(NewFPbig(NewBIGints(CURVE_B)))
+				}
+				// SSWU method
 				t.sqr();
 				t.imul(RIADZ)
-                w:=NewFPcopy(t); w.add(one); w.norm()
-                w.mul(t)
-                A.mul(w)
-                A.inverse(nil)
+                w.copy(t); w.add(one); w.norm()
+
+                w.mul(t); D.copy(A)
+                D.mul(w)
+       
                 w.add(one); w.norm()
                 w.mul(B)
                 w.neg(); w.norm()
-                X2:=NewFPcopy(w); X2.mul(A)
-                X3:=NewFPcopy(t); X3.mul(X2)
-                rhs:=RHS(X3)
-                X2.cmove(X3,rhs.qr(nil))
-                rhs.copy(RHS(X2))
-                Y.copy(rhs.sqrt(nil))
-                x.copy(X2.redc())
+
+                X2.copy(w); 
+                X3.copy(t); X3.mul(X2)
+
+// x^3+Ad^2x+Bd^3
+                GX1.copy(X2); GX1.sqr(); D2.copy(D)
+                D2.sqr(); w.copy(A); w.mul(D2); GX1.add(w); GX1.norm(); GX1.mul(X2); D2.mul(D);w.copy(B); w.mul(D2); GX1.add(w); GX1.norm()
+
+                w.copy(GX1); w.mul(D)
+                qr:=w.qr(hint)
+                D.copy(w); D.inverse(hint)
+                D.mul(GX1)
+                X2.mul(D)
+                X3.mul(D)
+                t.mul(h)
+                D2.copy(D); D2.sqr()
+
+                Y.copy(w.sqrt(hint))
+                Y.mul(D2)
+
+                D2.mul(t)
+                w.imul(RIADZ)
+
+                X1.copy(NewFPbig(NewBIGints(CURVE_HTPC)))
+                hint.mul(X1)
+                
+                Y3.copy(w.sqrt(hint))
+                Y3.mul(D2)
+
+                X2.cmove(X3,1-qr)
+                Y.cmove(Y3,1-qr)
+
+				ne:=Y.sign()^sgn
+				w.copy(Y); w.neg(); w.norm()
+				Y.cmove(w,ne)
+
+				if HTC_ISO!=0 {
+/* CAHCZS
+					k:=0
+					isox:=HTC_ISO
+					isoy:=3*(isox-1)/2
+
+				//xnum
+					xnum:=NewFPbig(NewBIGints(PC[k])); k+=1
+					for i:=0;i<isox;i++ {
+						xnum.mul(X2)
+						w.copy(NewFPbig(NewBIGints(PC[k]))); k+=1
+						xnum.add(w); xnum.norm()
+					}
+				//xden
+					xden:=NewFPcopy(X2)
+					w.copy(NewFPbig(NewBIGints(PC[k]))); k+=1
+					xden.add(w);xden.norm();
+					for i:=0;i<isox-2;i++ {
+						xden.mul(X2)
+						w.copy(NewFPbig(NewBIGints(PC[k]))); k+=1
+						xden.add(w); xden.norm()
+					}
+				//ynum
+					ynum:=NewFPbig(NewBIGints(PC[k])); k+=1
+					for i:=0;i<isoy;i++ {
+						ynum.mul(X2)
+						w.copy(NewFPbig(NewBIGints(PC[k]))); k+=1
+						ynum.add(w); ynum.norm()
+					}
+					yden:=NewFPcopy(X2)
+					w.copy(NewFPbig(NewBIGints(PC[k]))); k+=1
+					yden.add(w);yden.norm();
+					for i:=0;i<isoy-1;i++ {
+						yden.mul(X2)
+						w.copy(NewFPbig(NewBIGints(PC[k]))); k+=1
+						yden.add(w); yden.norm()
+					}
+					ynum.mul(Y)
+					w.copy(xnum); w.mul(yden)
+					P.x.copy(w)
+					w.copy(ynum); w.mul(xden)
+					P.y.copy(w)
+					w.copy(xden); w.mul(yden)
+					P.z.copy(w)
+					return P
+CAHCZF */
+				} else {
+					x:=X2.redc()
+					y:=Y.redc()
+					P.Copy(NewECPbigs(x,y))
+					return P
+				}
             } else {
 // Shallue and van de Woestijne
 // SQRTm3 not available, so preprocess this out
 /* */
                 Z:=RIADZ
-                X1:=NewFPint(Z)
-                X3:=NewFPcopy(X1)
-                A:=RHS(X1)
-				B:=NewFPbig(NewBIGints(SQRTm3))
+                X1.copy(NewFPint(Z))
+                X3.copy(X1)
+                A.copy(RHS(X1))
+				B.copy(NewFPbig(NewBIGints(SQRTm3)))
 				B.imul(Z)
 
                 t.sqr()
                 Y.copy(A); Y.mul(t)
                 t.copy(one); t.add(Y); t.norm()
                 Y.rsub(one); Y.norm()
-                NY.copy(t); NY.mul(Y); 
-				NY.mul(B)
+                D.copy(t); D.mul(Y); 
+				D.mul(B)
 				
-                w:=NewFPcopy(A);
-				FP_tpo(NY,w)
+                w.copy(A);
+				FP_tpo(D,w)
 
                 w.mul(B)
                 if (w.sign()==1) {
@@ -1418,14 +1555,14 @@ func ECP_map2point(h *FP) *ECP {
                 }
 
                 w.mul(B)				
-                w.mul(h); w.mul(Y); w.mul(NY)
+                w.mul(h); w.mul(Y); w.mul(D)
 
                 X1.neg(); X1.norm(); X1.div2()
-                X2:=NewFPcopy(X1)
+                X2.copy(X1)
                 X1.sub(w); X1.norm()
                 X2.add(w); X2.norm()
                 A.add(A); A.add(A); A.norm()
-                t.sqr(); t.mul(NY); t.sqr()
+                t.sqr(); t.mul(D); t.sqr()
                 A.mul(t)
                 X3.add(A); X3.norm()
 
@@ -1435,15 +1572,17 @@ func ECP_map2point(h *FP) *ECP {
                 X3.cmove(X1,rhs.qr(nil))
                 rhs.copy(RHS(X3))
                 Y.copy(rhs.sqrt(nil))
-                x.copy(X3.redc())
+
+				ne:=Y.sign()^sgn
+				w.copy(Y); w.neg(); w.norm()
+				Y.cmove(w,ne)
+
+				x:=X3.redc();
+				y:=Y.redc();
+				P.Copy(NewECPbigs(x,y))
+				return P
 /* */
             }
-            ne:=Y.sign()^sgn
-            NY.copy(Y); NY.neg(); NY.norm()
-            Y.cmove(NY,ne)
-
-            y:=Y.redc()
-            P.Copy(NewECPbigs(x,y))
 	}
 	return P
 }

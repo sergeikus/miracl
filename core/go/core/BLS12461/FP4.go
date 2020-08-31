@@ -22,7 +22,7 @@
 /* FP4 elements are of the form a+ib, where i is sqrt(-1+sqrt(-1)) */
 
 package BLS12461
-import "github.com/sergeikus/miracl/core/go/core"
+import "github.com/miracl/core/go/core"
 //import "fmt"
 
 type FP4 struct {
