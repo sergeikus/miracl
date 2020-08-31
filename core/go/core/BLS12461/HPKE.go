@@ -24,7 +24,7 @@
 package BLS12461
 
 //import "fmt"
-import "github.com/miracl/core/go/core"
+import "github.com/sergeikus/miracl/core/go/core"
 
 func reverse(X []byte) {
 	lx:=len(X)
