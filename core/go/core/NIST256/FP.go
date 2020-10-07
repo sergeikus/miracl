@@ -20,7 +20,7 @@
 /* Finite Field arithmetic */
 /* CLINT mod p functions */
 
-package BLS12461
+package NIST256
 import "github.com/sergeikus/miracl/core/go/core"
 
 type FP struct {

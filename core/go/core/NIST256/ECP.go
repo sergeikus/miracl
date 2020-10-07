@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-package BLS12461
+package NIST256
 //import "fmt"
 /* Elliptic Curve Point Structure */
 
@@ -1604,7 +1604,7 @@ CAHCZF */
             } else {
 // Shallue and van de Woestijne
 // SQRTm3 not available, so preprocess this out
-/* */
+/* CAISZS
                 Z:=RIADZ
                 X1.copy(NewFPint(Z))
                 X3.copy(X1)
@@ -1655,7 +1655,7 @@ CAHCZF */
 				y:=Y.redc();
 				P.Copy(NewECPbigs(x,y))
 				return P
-/* */
+CAISZF */
             }
 	}
 	return P

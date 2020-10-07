@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-package BLS12461
+package NIST256
 
 // Curve types
 const WEIERSTRASS int = 0
@@ -50,15 +50,15 @@ const NEGATIVEX int = 1
 // Curve type
 
 const CURVETYPE int = WEIERSTRASS
-const CURVE_A int = 0
-const CURVE_PAIRING_TYPE int = BLS12
+const CURVE_A int = -3
+const CURVE_PAIRING_TYPE int = NOT
 
 // Pairings only
 
-const SEXTIC_TWIST int = M_TYPE
-const SIGN_OF_X int = NEGATIVEX
-const ATE_BITS int = 78
-const G2_TABLE int = 79
+const SEXTIC_TWIST int = NOT
+const SIGN_OF_X int = NOT
+const ATE_BITS int = NOT
+const G2_TABLE int = NOT
 const HTC_ISO int = 0
 const HTC_ISO_G2 int = 0
 
