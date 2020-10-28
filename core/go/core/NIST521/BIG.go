@@ -23,7 +23,7 @@ package NIST521
 
 import "strconv"
 import "math/bits"
-import "github.com/miracl/core/go/core"
+import "github.com/sergeikus/miracl/core/go/core"
 
 //import "fmt"
 
